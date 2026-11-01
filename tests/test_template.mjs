@@ -26,3 +26,12 @@ c.d.board='';t=render();assert.doesNotMatch(t,/Почерк|доске|• От�
 for(const id of ['name','subject','gender','board','studentZone','lessonType','agreement']){assert.ok(id==='gender'?html.includes("gender='м'"):html.includes('id="'+id+'"'))}
 assert.ok(html.includes("$('zone').value='Europe/Moscow'"));assert.ok(html.includes('<option value="Europe/Moscow">Москва · МСК</option>'));
 console.log('Passed: exact agreed wording, both subjects, dates/zones, optional board, fields preserved, Moscow default, Zoom placeholder, Scriptable UI identical and valid JavaScript.');
+// Copying is handled by the browser on desktop and by Pasteboard in Scriptable.
+const copyCode=html.slice(html.indexOf("$('copy').onclick="),html.indexOf("$('newLesson').onclick="));
+for(const mode of ['browser','ios','fallback','denied']){
+ let copied=null,selected=false,message='';const elements={copy:{},finalText:{value:'Привет, Юра! 💀',select(){selected=true}}};
+ const ctx=vm.createContext({$:id=>elements[id],window:{PLATFORM:mode==='ios'?'ios':undefined},navigator:mode==='browser'?{clipboard:{writeText:async text=>{copied=text}}}:mode==='denied'?{clipboard:{writeText:async()=>{throw Error('denied')}}}:{},document:{execCommand:()=>{copied=elements.finalText.value;return true}},rpc:async(action,d)=>{assert.equal(action,'copy');copied=d.text},status:text=>{message=text}});
+ vm.runInContext(copyCode,ctx);await elements.copy.onclick();
+ if(mode==='denied'){assert.ok(selected);assert.match(message,/вручную/)}else assert.equal(copied,elements.finalText.value);
+}
+console.log('Clipboard: browser, Scriptable, legacy fallback and permission-denied handling passed.');

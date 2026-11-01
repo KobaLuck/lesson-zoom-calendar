@@ -1,0 +1,2 @@
+keyring>=25,<26; sys_platform != 'darwin'
+tzdata>=2024.1; sys_platform != 'darwin'

@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
-"""Урок Zoom: локальный интерфейс, Python 3.9+, без дополнительных пакетов."""
+"""Урок Zoom: локальный интерфейс для Windows, macOS и Linux, Python 3.9+."""
 import base64
 import json
 import secrets
 import subprocess
+import sys
 import threading
 import urllib.error
 import urllib.parse
@@ -23,24 +24,64 @@ UNCERTAIN = set()
 def read_state():
     if not STATE.exists():
         return {'students': []}
-    return json.loads(STATE.read_text())
+    return json.loads(STATE.read_text(encoding='utf-8'))
 
 def save_state(s):
     tmp = STATE.with_suffix('.tmp')
-    tmp.write_text(json.dumps(s, ensure_ascii=False))
+    tmp.write_text(json.dumps(s, ensure_ascii=False), encoding='utf-8')
     tmp.chmod(0o600)
     tmp.replace(STATE)
 
+def credential_backend():
+    """Use only OS-backed stores; never fall back to a plain-text file."""
+    try:
+        if sys.platform == 'win32':
+            from keyring.backends.Windows import WinVaultKeyring
+            return WinVaultKeyring()
+        if sys.platform.startswith('linux'):
+            from keyring.backends.SecretService import Keyring
+            return Keyring()
+    except ImportError as e:
+        raise ValueError('Установите зависимости: python -m pip install -r requirements.txt') from e
+    raise ValueError('Поддерживаются Windows, macOS и Linux.')
+
+
 def key_get(name):
-    p = subprocess.run(['security', 'find-generic-password', '-s', SERVICE, '-a', name, '-w'], capture_output=True, text=True)
-    return p.stdout.strip() if p.returncode == 0 else ''
+    if sys.platform == 'darwin':
+        p = subprocess.run(['security', 'find-generic-password', '-s', SERVICE, '-a', name, '-w'], capture_output=True, text=True, encoding='utf-8')
+        if p.returncode not in (0, 44):
+            raise ValueError('Не удалось открыть связку ключей macOS. Разрешите доступ к LessonZoom.')
+        return p.stdout.strip() if p.returncode == 0 else ''
+    try:
+        return credential_backend().get_password(SERVICE, name) or ''
+    except ValueError:
+        raise
+    except Exception as e:
+        raise ValueError('Не удалось открыть хранилище ключей. В Linux запустите и разблокируйте Secret Service (например, GNOME Keyring). В Windows проверьте доступ к диспетчеру учётных данных.') from e
+
 
 def key_set(name, value):
-    subprocess.run(['security', 'add-generic-password', '-U', '-s', SERVICE, '-a', name, '-w', value], check=True, capture_output=True)
+    if sys.platform == 'darwin':
+        try:
+            subprocess.run(['security', 'add-generic-password', '-U', '-s', SERVICE, '-a', name, '-w', value], check=True, capture_output=True)
+        except subprocess.CalledProcessError as e:
+            raise ValueError('Не удалось сохранить ключ в связке ключей macOS.') from e
+        return
+    try:
+        credential_backend().set_password(SERVICE, name, value)
+    except ValueError:
+        raise
+    except Exception as e:
+        raise ValueError('Не удалось сохранить ключ. Разблокируйте системное хранилище и повторите.') from e
+
 
 def config():
     s = read_state()
-    return {**s, 'host': key_get('Email Zoom'), 'calendarUrl': key_get('Calendar URL'), 'calendarConnected': bool(key_get('Calendar URL') and key_get('Calendar Token')), 'connected': all(key_get(k) for k in ['Account ID', 'Client ID', 'Client Secret', 'Email Zoom'])}
+    try:
+        keys = {k: key_get(k) for k in ['Email Zoom', 'Calendar URL', 'Calendar Token', 'Account ID', 'Client ID', 'Client Secret']}
+    except ValueError as e:
+        return {**s, 'host': '', 'calendarUrl': '', 'connected': False, 'calendarConnected': False, 'storageError': str(e)}
+    return {**s, 'host': keys['Email Zoom'], 'calendarUrl': keys['Calendar URL'], 'calendarConnected': bool(keys['Calendar URL'] and keys['Calendar Token']), 'connected': all(keys[k] for k in ['Email Zoom', 'Account ID', 'Client ID', 'Client Secret'])}
 
 def post(url, body, headers):
     try:
@@ -124,9 +165,6 @@ def action(name, d):
             if d.get(field):
                 key_set(label, d[field])
         return {'connected': True, 'calendarConnected': True}
-    if name == 'copy':
-        subprocess.run(['pbcopy'], input=d['text'], text=True, check=True)
-        return {'ok': True}
     if name != 'create':
         raise ValueError('Неизвестное действие.')
     s = read_state()
@@ -191,7 +229,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send({'error': 'Доступ запрещён'}, 403)
         if self.path != '/':
             return self.send({'error': 'Не найдено'}, 404)
-        html = (ROOT / 'Интерфейс.html').read_text()
+        html = (ROOT / 'Интерфейс.html').read_text(encoding='utf-8')
         html = html.replace('<script>', '<script>window.TOKEN=' + json.dumps(TOKEN) + ';', 1)
         self.send(html, kind='text/html; charset=utf-8')
 
