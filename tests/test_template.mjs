@@ -1,5 +1,5 @@
-import fs from 'node:fs';import vm from 'node:vm';import assert from 'node:assert/strict';
-const dir=new URL('../',import.meta.url).pathname;
+import fs from 'node:fs';import {fileURLToPath} from 'node:url';import vm from 'node:vm';import assert from 'node:assert/strict';
+const dir=fileURLToPath(new URL('../',import.meta.url));
 const html=fs.readFileSync(dir+'Интерфейс.html','utf8');const ios=fs.readFileSync(dir+'Урок-Zoom-Scriptable.js','utf8');
 new vm.Script(html.match(/<script>([\s\S]*)<\/script>/)[1]);
 new (Object.getPrototypeOf(async function(){}).constructor)(ios);
