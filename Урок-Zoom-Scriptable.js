@@ -17,13 +17,14 @@ function readSettingsFields(alert,service,fields){
  }
  return values;
 }
+function settingsFieldLabel(key){return ({calendarUrl:'Адрес Google-скрипта',calendarToken:'Ключ Google-скрипта'})[key]||names[key]}
 function saveConnectionSettings(d){
  const candidate={};
  for(const key of Object.keys(names)){
   const service=key.startsWith('calendar')?'Google Календарь':'Zoom';
   try{candidate[key]=rememberPrivate((d[key]||'').trim()||get(key))}
-  catch(e){throw settingsError(service,'Чтение сохранённых настроек',names[key],'KEYCHAIN_READ','Не удалось прочитать сохранённое поле «'+names[key]+'» из Keychain.',e)}
-  if(!candidate[key])throw settingsError(service,'Проверка полей',names[key],'FIELD_REQUIRED','Заполни поле «'+names[key]+'» в настройках '+service+'.')
+  catch(e){throw settingsError(service,'Чтение сохранённых настроек',settingsFieldLabel(key),'KEYCHAIN_READ','Не удалось прочитать сохранённое поле «'+settingsFieldLabel(key)+'» из Keychain.',e)}
+  if(!candidate[key])throw settingsError(service,'Проверка полей',settingsFieldLabel(key),'FIELD_REQUIRED','Заполни поле «'+settingsFieldLabel(key)+'» в настройках '+service+'.')
  }
  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate.host))throw settingsError('Zoom','Проверка полей','Email Zoom','INVALID_EMAIL','В поле «Email Zoom» нужен email аккаунта организатора, например name@example.com.');
  if(!calendarURLValid(candidate.calendarUrl))throw settingsError('Google Календарь','Проверка полей','Адрес Google-скрипта','INVALID_CALENDAR_URL','Нужен адрес опубликованного веб-приложения: https://script.google.com/macros/s/…/exec. Ссылка на редактор /edit или тестовый адрес /dev не подходят.');
@@ -31,7 +32,7 @@ function saveConnectionSettings(d){
   if(!d[key]||!d[key].trim())continue;
   const service=key.startsWith('calendar')?'Google Календарь':'Zoom';
   try{Keychain.set('lesson-zoom-'+names[key],candidate[key]);if(get(key)!==candidate[key])throw Error('Keychain не подтвердил сохранённое значение.')}
-  catch(e){throw settingsError(service,'Сохранение в Keychain',names[key],'KEYCHAIN_WRITE','Не удалось сохранить поле «'+names[key]+'» на iPhone. Часть предыдущих полей могла сохраниться; пустые поля при повторе оставляют сохранённые ключи.',e)}
+  catch(e){throw settingsError(service,'Сохранение в Keychain',settingsFieldLabel(key),'KEYCHAIN_WRITE','Не удалось сохранить поле «'+settingsFieldLabel(key)+'» на iPhone. Часть предыдущих полей могла сохраниться; пустые поля при повторе оставляют сохранённые ключи.',e)}
  }
  return {connected:true,calendarConnected:true};
 }

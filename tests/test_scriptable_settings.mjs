@@ -33,7 +33,7 @@ async function scenario(mode){
     if(mode==='read-zoom'){assert.match(report.title,/Zoom/);assert.match(report.message,/Email Zoom/);assert.match(report.message,/FORM_READ_0/)}
     if(mode==='read-google'){assert.match(report.title,/Google/);assert.match(report.message,/Адрес Google-скрипта/);assert.match(report.message,/FORM_READ_0/)}
     if(mode==='bad-url'){assert.match(report.message,/INVALID_CALENDAR_URL/);assert.equal(writes,0);await tap();assert.equal(reports.length,1);assert.equal(values.get('lesson-zoom-Client Secret'),fixtures.secret);assert.deepEqual(forms[1].defaults,[fixtures.host,fixtures.account,fixtures.client,fixtures.secret])}
-    if(mode==='write'){assert.match(report.title,/Google/);assert.match(report.message,/Calendar Token/);assert.match(report.message,/KEYCHAIN_WRITE/)}
+    if(mode==='write'){assert.match(report.title,/Google/);assert.match(report.message,/Ключ Google-скрипта/);assert.match(report.message,/KEYCHAIN_WRITE/)}
     if(mode==='missing'){assert.match(report.title,/Zoom/);assert.match(report.message,/Account ID/);assert.match(report.message,/FIELD_REQUIRED/);assert.equal(writes,0)}
     for(const value of Object.values(fixtures))assert.ok(!report.message.includes(value),'credential leaked into diagnostics');
    }
