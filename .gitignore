@@ -1,0 +1,12 @@
+# Local lesson history and temporary state
+.lesson-zoom.json
+.lesson-zoom.tmp
+*.tmp
+.DS_Store
+__pycache__/
+*.py[cod]
+.env
+.env.*
+credentials*.json
+token*.json
+client_secret*.json
