@@ -3,7 +3,7 @@ const dir=fileURLToPath(new URL('../',import.meta.url));
 const html=fs.readFileSync(dir+'Интерфейс.html','utf8').replace(/\r\n/g,'\n');const ios=fs.readFileSync(dir+'Урок-Zoom-Scriptable.js','utf8').replace(/\r\n/g,'\n');
 new vm.Script(html.match(/<script>([\s\S]*)<\/script>/)[1]);
 new (Object.getPrototypeOf(async function(){}).constructor)(ios);
-assert.equal(JSON.parse(ios.split('\n')[0].slice('const HTML='.length,-1)),html);
+assert.doesNotMatch(ios,/new WebView|loadHTML|evaluateJavaScript/);
 const c=vm.createContext({});vm.runInContext(html.slice(html.indexOf('function template(d)'),html.indexOf('function update()')),c);
 c.d={name:'Юра',subject:'Математика',date:'2027-01-10',time:'13:00',zone:'Europe/Moscow',studentZone:'Europe/Moscow',board:'https://app.holst.so/board/example',lessonType:'trial',agreement:'mother'};
 const render=()=>vm.runInContext('template(d)',c);
@@ -25,7 +25,7 @@ c.d.board='';t=render();assert.doesNotMatch(t,/Почерк|доске|• От�
 // User data card and its fields remain present; startup ignores a previously saved Vietnam zone.
 for(const id of ['name','subject','gender','board','studentZone','lessonType','agreement']){assert.ok(id==='gender'?html.includes("gender='м'"):html.includes('id="'+id+'"'))}
 assert.ok(html.includes("$('zone').value='Europe/Moscow'"));assert.ok(html.includes('<option value="Europe/Moscow">Москва · МСК</option>'));
-console.log('Passed: exact agreed wording, both subjects, dates/zones, optional board, fields preserved, Moscow default, Zoom placeholder, Scriptable UI identical and valid JavaScript.');
+console.log('Passed: exact agreed wording, both subjects, dates/zones, optional board, fields preserved, Moscow default, Zoom placeholder, native Scriptable source valid without WebView.');
 // Copying is handled by the browser on desktop and by Pasteboard in Scriptable.
 const copyCode=html.slice(html.indexOf("$('copy').onclick="),html.indexOf("$('newLesson').onclick="));
 for(const mode of ['browser','ios','fallback','denied']){
