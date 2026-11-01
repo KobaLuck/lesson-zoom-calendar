@@ -1,8 +1,50 @@
-// Урок Zoom · iPhone · Native UI v3
+// Урок Zoom · iPhone · Native UI v4
 // Урок Zoom · интерфейс для Scriptable на iPhone
+// Settings diagnostics never include entered credentials.
+const diagnosticSecrets=new Set();
+function rememberPrivate(value){if(typeof value==='string'&&value.length>=4)diagnosticSecrets.add(value);return value}
+function safeDiagnostic(value){let text=String(value||'');for(const secret of diagnosticSecrets)text=text.split(secret).join('[скрыто]');return text}
+function settingsError(service,stage,field,code,message,cause){
+ const e=new Error(message);e.settingsService=service;e.settingsStage=stage;e.settingsField=field;e.settingsCode=code;
+ e.settingsDetail=cause?safeDiagnostic(cause.message||String(cause)):'';return e;
+}
+function readSettingsFields(alert,service,fields){
+ const values={};
+ for(let i=0;i<fields.length;i++){
+  const [key,label]=fields[i];
+  try{const value=alert.textFieldValue(i);if(typeof value!=='string')throw Error('Поле не вернуло текст.');values[key]=rememberPrivate(value.trim())}
+  catch(e){throw settingsError(service,'Чтение формы',label,'FORM_READ_'+i,'Не удалось прочитать поле «'+label+'» в окне '+service+'. Открой настройки ещё раз. Сохранённые ключи не удалены.',e)}
+ }
+ return values;
+}
+function saveConnectionSettings(d){
+ const candidate={};
+ for(const key of Object.keys(names)){
+  const service=key.startsWith('calendar')?'Google Календарь':'Zoom';
+  try{candidate[key]=rememberPrivate((d[key]||'').trim()||get(key))}
+  catch(e){throw settingsError(service,'Чтение сохранённых настроек',names[key],'KEYCHAIN_READ','Не удалось прочитать сохранённое поле «'+names[key]+'» из Keychain.',e)}
+  if(!candidate[key])throw settingsError(service,'Проверка полей',names[key],'FIELD_REQUIRED','Заполни поле «'+names[key]+'» в настройках '+service+'.')
+ }
+ if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate.host))throw settingsError('Zoom','Проверка полей','Email Zoom','INVALID_EMAIL','В поле «Email Zoom» нужен email аккаунта организатора, например name@example.com.');
+ if(!calendarURLValid(candidate.calendarUrl))throw settingsError('Google Календарь','Проверка полей','Адрес Google-скрипта','INVALID_CALENDAR_URL','Нужен адрес опубликованного веб-приложения: https://script.google.com/macros/s/…/exec. Ссылка на редактор /edit или тестовый адрес /dev не подходят.');
+ for(const key of Object.keys(names)){
+  if(!d[key]||!d[key].trim())continue;
+  const service=key.startsWith('calendar')?'Google Календарь':'Zoom';
+  try{Keychain.set('lesson-zoom-'+names[key],candidate[key]);if(get(key)!==candidate[key])throw Error('Keychain не подтвердил сохранённое значение.')}
+  catch(e){throw settingsError(service,'Сохранение в Keychain',names[key],'KEYCHAIN_WRITE','Не удалось сохранить поле «'+names[key]+'» на iPhone. Часть предыдущих полей могла сохраниться; пустые поля при повторе оставляют сохранённые ключи.',e)}
+ }
+ return {connected:true,calendarConnected:true};
+}
+async function showActionError(e){
+ const service=e.settingsService||'Приложение';
+ const report=safeDiagnostic(['Урок Zoom · iPhone · v4','Раздел: '+service,'Этап: '+(e.settingsStage||'Выполнение действия'),'Поле: '+(e.settingsField||'—'),'Код: '+(e.settingsCode||'ACTION_ERROR'),'Ошибка: '+e.message,e.settingsDetail?'Детали: '+e.settingsDetail:''].filter(Boolean).join('\n'));
+ const alert=new Alert();alert.title=e.settingsService?'Ошибка настроек: '+service:'Не получилось';alert.message=report;alert.addAction('Закрыть');alert.addAction('Скопировать ошибку');
+ if(await alert.presentAlert()===1)Pasteboard.copyString(report);
+}
+
 const stateKey='lesson-zoom-ui-state';
 const names={account:'Account ID',client:'Client ID',secret:'Client Secret',host:'Email Zoom',calendarUrl:'Calendar URL',calendarToken:'Calendar Token'};
-function get(k){let n='lesson-zoom-'+names[k];return Keychain.contains(n)?Keychain.get(n):''}
+function get(k){let n='lesson-zoom-'+names[k];return Keychain.contains(n)?rememberPrivate(Keychain.get(n)):''}
 function state(){return Keychain.contains(stateKey)?JSON.parse(Keychain.get(stateKey)):{students:[]}}
 function save(s){Keychain.set(stateKey,JSON.stringify(s))}
 function config(){return {...state(),host:get('host'),calendarUrl:get('calendarUrl'),calendarConnected:!!(get('calendarUrl')&&get('calendarToken')),connected:['account','client','secret','host'].every(k=>get(k))}}
@@ -23,13 +65,7 @@ async function action(action,d){
  if(action==='init')return config();
  if(action==='copy'){Pasteboard.copyString(d.text);return {ok:true}}
  if(action==='syncCalendar'){let s=state();if(!s.last||s.last.requestId!==d.requestId)throw Error('Откройте последнее сообщение.');return await syncCalendar(s)}
- if(action==='settings'){
-  if(!d.host||!d.host.includes('@'))throw Error('Введите email аккаунта Zoom.');
-  if(!calendarURLValid(d.calendarUrl||get('calendarUrl')))throw Error('Введите адрес опубликованного Google-скрипта (/exec).');
-  for(let k of Object.keys(names))if(!d[k]&&!get(k))throw Error('Заполните '+names[k]);
-  for(let k of Object.keys(names))if(d[k])Keychain.set('lesson-zoom-'+names[k],d[k]);
-  return {connected:true,calendarConnected:true};
- }
+ if(action==='settings')return saveConnectionSettings(d);
  if(action!=='create')throw Error('Неизвестное действие.');
  let s=state();
  if(s.last&&s.last.requestId===d.requestId)return await syncCalendar(s);
@@ -101,20 +137,26 @@ async function openNativeLesson(){
  const initial=state(),defaults=initial.defaults||{};
  const now=nativeShift(new Date(),3);
  const d={name:'',gender:'м',subject:defaults.subject||'Математика',date:nativeDateKey(now),time:defaults.time||'18:00',zone:'Europe/Moscow',studentZone:'Europe/Moscow',studentOffset:3,duration:defaults.duration||60,board:'',remember:true,lessonType:'trial',agreement:'mother'};
- let busy=false,result=null,requestId=null,customText=null,statusText='Нажми на строку, чтобы изменить значение.';
+ let busy=false,result=null,requestId=null,customText=null,statusText='Нажми на строку, чтобы изменить значение.';let settingsDraft={};
  function changed(){requestId=null;customText=null}
  function message(){return customText||template(d)}
- async function perform(task){if(busy)return;busy=true;try{await task()}catch(e){await notice('Не получилось',e.message||String(e))}finally{busy=false;render()}}
+ async function perform(task){if(busy)return;busy=true;try{await task()}catch(e){await showActionError(e)}finally{busy=false;render()}}
  function row(title,subtitle,task,header=false){const r=new UITableRow();r.height=subtitle?64:48;r.isHeader=header;if(subtitle)r.addText(title,subtitle);else r.addText(title);r.dismissOnSelect=false;if(task&&!busy)r.onSelect=()=>perform(task);table.addRow(r)}
  async function edit(field,title,description){const v=await input(title,d[field],description);if(v!==null){d[field]=v;changed()}}
  async function settings(){
   const a=new Alert();a.title='Настройки Zoom';a.message='Пустые поля ключей сохраняют прежние значения.';
-  a.addTextField('Email Zoom',get('host'));a.addTextField('Account ID','');a.addTextField('Client ID','');a.addSecureTextField('Client Secret','');a.addAction('Далее');a.addCancelAction('Отмена');
+  a.addTextField('Email Zoom',settingsDraft.host||get('host'));a.addTextField('Account ID',settingsDraft.account||'');a.addTextField('Client ID',settingsDraft.client||'');a.addSecureTextField('Client Secret',settingsDraft.secret||'');a.addAction('Далее');a.addCancelAction('Отмена');
   if(await a.presentAlert()<0)return;
-  const b=new Alert();b.title='Google Календарь';b.message='Адрес развертывания /exec и ключ из setup.';b.addTextField('Адрес Google-скрипта',get('calendarUrl'));b.addSecureTextField('Ключ Google-скрипта','');b.addAction('Сохранить');b.addCancelAction('Отмена');
+  // Snapshot fields before constructing another native alert: Scriptable may reuse its form state.
+  const zoom=readSettingsFields(a,'Zoom',[['host','Email Zoom'],['account','Account ID'],['client','Client ID'],['secret','Client Secret']]);
+  settingsDraft={...settingsDraft,...zoom};
+  const b=new Alert();b.title='Google Календарь';b.message='Адрес развертывания /exec и ключ из setup. Пустой ключ сохраняет прежнее значение.';
+  b.addTextField('Адрес Google-скрипта',settingsDraft.calendarUrl||get('calendarUrl'));b.addSecureTextField('Ключ Google-скрипта',settingsDraft.calendarToken||'');b.addAction('Сохранить');b.addCancelAction('Отмена');
   if(await b.presentAlert()<0)return;
-  await action('settings',{host:a.textFieldValue(0).trim(),account:a.textFieldValue(1).trim(),client:a.textFieldValue(2).trim(),secret:a.textFieldValue(3),calendarUrl:b.textFieldValue(0).trim(),calendarToken:b.textFieldValue(1).trim()});
-  statusText='Настройки сохранены.';
+  const google=readSettingsFields(b,'Google Календарь',[['calendarUrl','Адрес Google-скрипта'],['calendarToken','Ключ Google-скрипта']]);
+  settingsDraft={...settingsDraft,...google};
+  await action('settings',settingsDraft);
+  settingsDraft={};statusText='Настройки сохранены на iPhone. Доступ к сервисам проверяется при создании встречи.';
  }
  async function student(){
   const saved=state().students||[];
@@ -138,7 +180,7 @@ async function openNativeLesson(){
   result=await action('create',{...d,text:message(),requestId});statusText=result.calendarStatus==='created'?'Zoom и событие в календаре созданы.':'Zoom создан. Добавление в календарь нужно повторить.';
  }
  function render(){
-  table.removeAllRows();row('Новый урок · iPhone','Встроенная форма Scriptable · версия 3',null,true);
+  table.removeAllRows();row('Новый урок · iPhone','Встроенная форма Scriptable · версия 4',null,true);
   row(statusText,null);
   const connection=config();row('Настройки подключения',connection.connected&&connection.calendarConnected?'Zoom и Google Календарь настроены':'Нажми и заполни настройки',settings);
   if(result){
