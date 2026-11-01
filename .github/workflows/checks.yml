@@ -25,3 +25,4 @@ jobs:
       - run: python tests/test_mac.py
       - run: python tests/test_platforms.py
       - run: node tests/test_template.mjs
+      - run: node tests/test_scriptable.mjs
