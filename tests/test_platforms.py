@@ -18,6 +18,12 @@ class PlatformTests(unittest.TestCase):
         self.module = runpy.run_path(str(ROOT / 'Урок-Zoom.py'))
         self.g = self.module['key_get'].__globals__
 
+    @unittest.skipIf(sys.platform == 'darwin', 'macOS uses its built-in security command')
+    def test_installed_native_backend_imports_without_accessing_secrets(self):
+        backend = self.module['credential_backend']()
+        expected = 'keyring.backends.Windows' if sys.platform == 'win32' else 'keyring.backends.SecretService'
+        self.assertEqual(type(backend).__module__, expected)
+
     def test_native_macos_store_remains_compatible(self):
         self.g['sys'] = types.SimpleNamespace(platform='darwin')
         run = Mock(return_value=types.SimpleNamespace(returncode=0, stdout='existing-secret\n'))
